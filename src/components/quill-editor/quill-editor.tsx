@@ -1,7 +1,7 @@
 "use client";
 import { useAppState } from "@/lib/providers/state-provider";
 import { File, Folder, workspace } from "@/lib/superbase/supabase.types";
-import React, { useCallback, useState, useMemo, useEffect } from "react";
+import React, { useCallback, useState, useMemo, useEffect, useRef } from "react";
 import "quill/dist/quill.snow.css";
 import { Button } from "../ui/button";
 import {
@@ -31,6 +31,7 @@ import EmojiPicker from "../global/emoji-picker";
 import BannerUpload from "../banner-upload/banner-upload";
 import { useSocket } from "@/lib/providers/socket-provider";
 import { useSupabaseUser } from "@/lib/providers/supabase-user-provider";
+import { TypeOf } from "zod";
 
 interface QuillEditorProps {
   dirDetails: File | Folder | workspace;
@@ -64,6 +65,7 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
   dirType,
 }) => {
   const { state, workspaceId, folderId, dispatch } = useAppState();
+  const saveTimerRef = useRef < ReturnType < TypeOf setTimeout>> ();
   const pathname = usePathname();
   const { user } = useSupabaseUser();
   const { socket } = useSocket();
@@ -339,18 +341,80 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
     fetchInformation();
   }, [fileId, workspaceId, quill, dirType]);
 
-  //rooms
+  //roomsF
   useEffect(() => {
     if (socket === null || quill === null || !fileId) return;
     socket.emit("create-room", fileId);
   }, [socket, quill, fileId]);
 
   //Send quill changes to all clients
-  useEffect(() => {
+   useEffect(() => {
     if (quill === null || socket === null || !fileId || !user) return;
-    const selectionChangeHandler = () => {};
-    const quillHandler = () => {};
-  }, [quill, socket, fileId, user, details]);
+
+    const selectionChangeHandler = (cursorId: string) => {
+      return (range: any, oldRange: any, source: any) => {
+        if (source === 'user' && cursorId) {
+          socket.emit('send-cursor-move', range, fileId, cursorId);
+        }
+      };
+    };
+    const quillHandler = (delta: any, oldDelta: any, source: any) => {
+      if (source !== 'user') return;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      setSaving(true);
+      const contents = quill.getContents();
+      const quillLength = quill.getLength();
+      saveTimerRef.current = setTimeout(async () => {
+        if (contents && quillLength !== 1 && fileId) {
+          if (dirType == 'workspace') {
+            dispatch({
+              type: 'UPDATE_WORKSPACE',
+              payload: {
+                workspace: { data: JSON.stringify(contents) },
+                workspaceId: fileId,
+              },
+            });
+            await updateWorkspace({ data: JSON.stringify(contents) }, fileId);
+          }
+          if (dirType == 'folder') {
+            if (!workspaceId) return;
+            dispatch({
+              type: 'UPDATE_FOLDER',
+              payload: {
+                folder: { data: JSON.stringify(contents) },
+                workspaceId,
+                folderId: fileId,
+              },
+            });
+            await updateFolder({ data: JSON.stringify(contents) }, fileId);
+          }
+          if (dirType == 'file') {
+            if (!workspaceId || !folderId) return;
+            dispatch({
+              type: 'UPDATE_FILE',
+              payload: {
+                file: { data: JSON.stringify(contents) },
+                workspaceId,
+                folderId: folderId,
+                fileId,
+              },
+            });
+            await updateFile({ data: JSON.stringify(contents) }, fileId);
+          }
+        }
+        setSaving(false);
+      }, 850);
+      socket.emit('send-changes', delta, fileId);
+    };
+    quill.on('text-change', quillHandler);
+     quill.on('selection-change', selectionChangeHandler(user.id));
+      return () => {
+      quill.off('text-change', quillHandler);
+      quill.off('selection-change', selectionChangeHandler);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [quill, socket, fileId, user, details, folderId, workspaceId, dispatch]);
+
 
   return (
     <>
