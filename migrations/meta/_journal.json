@@ -1,0 +1,48 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1710228777338,
+      "tag": "0000_next_otto_octavius",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1710232040474,
+      "tag": "0001_foamy_the_santerians",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1710234675281,
+      "tag": "0002_fine_jasper_sitwell",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1710399500278,
+      "tag": "0003_lethal_vengeance",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1710750670017,
+      "tag": "0004_faulty_bloodstorm",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1710753038897,
+      "tag": "0005_nappy_the_anarchist",
+      "breakpoints": true
+    }
+  ]
+}
