@@ -37,7 +37,7 @@ import EmojiPicker from "../global/emoji-picker";
 import BannerUpload from "../banner-upload/banner-upload";
 import { useSocket } from "@/lib/providers/socket-provider";
 import { useSupabaseUser } from "@/lib/providers/supabase-user-provider";
-import { TypeOf } from "zod";
+import { TypeOf, string } from "zod";
 
 interface QuillEditorProps {
   dirDetails: File | Folder | workspace;
@@ -76,11 +76,11 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
   const { user } = useSupabaseUser();
   const { socket } = useSocket();
   const [quill, setQuill] = useState<any>(null);
-  const [collaborators, setcollaborators] = useState<
-    { id: string; email: string; avatarUrl: string }[]
-  >();
+  const [collaborators, setCollaborators] =
+    useState<{ id: string; email: string; avatarUrl: string }[]>();
   const [deletingBanner, setDeletingBanner] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [localCursors, setLocalCursors] = useState<any>([]);
   const router = useRouter();
 
   const details = useMemo(() => {
@@ -160,17 +160,17 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
       const editor = document.createElement("div");
       wrapper.append(editor);
       const Quill = (await import("quill")).default;
-      const QuillCursors = (await import('quill-cursors')).default;
-      Quill.register('modules/cursors', QuillCursors);
+      const QuillCursors = (await import("quill-cursors")).default;
+      Quill.register("modules/cursors", QuillCursors);
 
       //wip
       const q = new Quill(editor, {
         theme: "snow",
         modules: {
           toolbar: TOOLBAR_OPTIONS,
-         cursors: {
-          transformOnTextChange:true;
-         },
+          cursors: {
+            transformOnTextChange: true,
+          },
         },
       });
       setQuill(q);
@@ -351,6 +351,25 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
     fetchInformation();
   }, [fileId, workspaceId, quill, dirType]);
 
+  useEffect(() => {
+    if (quill === null || socket === null || !fileId || !localCursors.length)
+      return;
+    const socketHandler = (range: any, roomId: string, cursorId: string) => {
+      if (roomId === fileId) {
+        const cursorToMove = localCursors.find(
+          (c: any) => c.cursors()?.[0].id === cursorId
+        );
+        if (cursorToMove) {
+          cursorToMove.moveCursor(cursorId, range);
+        }
+      }
+    };
+    socket.on("receive-cursor-move", socketHandler);
+    return () => {
+      socket.off("receive-cursor-move", socketHandler);
+    };
+  }, [quill, socket, fileId, localCursors]);
+
   //roomsF
   useEffect(() => {
     if (socket === null || quill === null || !fileId) return;
@@ -442,7 +461,7 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
     if (!fileId || quill === null) return;
     const room = supabase.channel(fileId);
     const subscription = room
-      .on('presence', { event: 'sync' }, () => {
+      .on("presence", { event: "sync" }, () => {
         const newState = room.presenceState();
         const newCollaborators = Object.values(newState).flat() as any;
         setCollaborators(newCollaborators);
@@ -451,10 +470,10 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
           newCollaborators.forEach(
             (collaborator: { id: string; email: string; avatar: string }) => {
               if (collaborator.id !== user.id) {
-                const userCursor = quill.getModule('cursors');
+                const userCursor = quill.getModule("cursors");
                 userCursor.createCursor(
                   collaborator.id,
-                  collaborator.email.split('@')[0],
+                  collaborator.email.split("@")[0],
                   `#${Math.random().toString(16).slice(2, 8)}`
                 );
                 allCursors.push(userCursor);
@@ -465,19 +484,23 @@ const QuillEditor: React.FC<QuillEditorProps> = ({
         }
       })
       .subscribe(async (status) => {
-        if (status !== 'SUBSCRIBED' || !user) return;
+        if (status !== "SUBSCRIBED" || !user) return;
         const response = await findUser(user.id);
         if (!response) return;
 
         room.track({
           id: user.id,
-          email: user.email?.split('@')[0],
+          email: user.email?.split("@")[0],
           avatarUrl: response.avatarUrl
-            ? supabase.storage.from('avatars').getPublicUrl(response.avatarUrl)
+            ? supabase.storage.from("avatars").getPublicUrl(response.avatarUrl)
                 .data.publicUrl
-            : '',
+            : "",
         });
       });
+    return () => {
+      supabase.removeChannel(room);
+    };
+  }, [fileId, quill, supabase, user]);
 
   return (
     <>
